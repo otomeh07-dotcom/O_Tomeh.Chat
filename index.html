@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>O_Tomeh.Chat</title>
+    <meta
+      name="description"
+      content="O_Tomeh.Chat is a conversation website."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Manrope:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="background-orb orb-a"></div>
+    <div class="background-orb orb-b"></div>
+    <div class="background-grid"></div>
+
+    <div class="app-shell">
+      <header class="site-header">
+        <a class="brand" href="./">
+          <span class="brand-mark">O</span>
+          <span>O_Tomeh.Chat</span>
+        </a>
+
+        <div class="header-actions">
+          <div class="session-pill hidden" id="session-pill">
+            <span class="session-dot"></span>
+            <span id="session-email"></span>
+          </div>
+          <button class="ghost-button hidden" id="sign-out-button" type="button">
+            Sign out
+          </button>
+        </div>
+      </header>
+
+      <div class="status-banner hidden" id="config-banner"></div>
+
+      <main>
+        <section class="view landing-view" id="landing-view">
+          <div class="landing-shell">
+            <section class="panel auth-panel entry-panel" id="auth-panel">
+              <div class="panel-header single-column-header">
+                <p class="section-label">Enter</p>
+                <h1 class="entry-title">O_Tomeh.Chat</h1>
+                <p class="entry-copy">Enter your email to continue.</p>
+              </div>
+
+              <form id="auth-form" class="stack-form">
+                <label class="field">
+                  <span>Your email</span>
+                  <input
+                    id="auth-email"
+                    type="email"
+                    placeholder="you@example.com"
+                    autocomplete="email"
+                    required
+                  />
+                </label>
+
+                <button class="primary-button" id="auth-submit" type="submit">Continue</button>
+              </form>
+
+              <p class="helper-text" id="auth-feedback">Enter your email to continue.</p>
+            </section>
+
+            <section class="panel link-panel entry-panel hidden" id="link-panel">
+              <div class="panel-header single-column-header">
+                <p class="section-label">Ready</p>
+                <h2 class="entry-title">Conversation link ready</h2>
+                <p class="entry-copy">Open it or share it.</p>
+              </div>
+
+              <div class="personal-room-card">
+                <span class="meta-label">Conversation link</span>
+                <strong class="personal-room-code code-text" id="my-room-code">---</strong>
+                <a class="room-link-preview" id="my-room-link-preview" href="./">Open conversation link</a>
+              </div>
+
+              <div class="inline-actions">
+                <button class="primary-button" id="new-room-button" type="button">Open conversation</button>
+                <button class="ghost-button" id="copy-home-link-button" type="button">Copy link</button>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view room-view hidden" id="room-view">
+          <div class="room-shell">
+            <aside class="room-sidebar">
+              <div class="room-sidebar-section">
+                <p class="section-label">Current conversation</p>
+                <h2 class="room-code-title" id="room-title">---</h2>
+                <p class="helper-text">
+                  Anyone with the link can join this conversation.
+                </p>
+                <div class="inline-actions">
+                  <button class="secondary-button" id="copy-room-link-button" type="button">
+                    Copy conversation link
+                  </button>
+                  <button class="ghost-button" id="leave-room-button" type="button">
+                    Leave conversation
+                  </button>
+                </div>
+              </div>
+
+              <div class="room-sidebar-section">
+                <div class="section-heading">
+                  <p class="section-label">People</p>
+                  <span class="participant-count" id="participant-count">0</span>
+                </div>
+                <ul class="participant-list" id="participant-list"></ul>
+              </div>
+
+              <div class="room-sidebar-section chat-section">
+                <div class="section-heading">
+                  <p class="section-label">Conversation</p>
+                </div>
+                <div class="chat-log" id="chat-log">
+                  <div class="empty-state">Conversation messages will appear here.</div>
+                </div>
+                <form class="chat-form" id="chat-form">
+                  <input
+                    id="chat-input"
+                    type="text"
+                    maxlength="220"
+                    placeholder="Send a message in the conversation"
+                  />
+                  <button class="primary-button" type="submit">Send</button>
+                </form>
+              </div>
+            </aside>
+
+            <section class="room-stage">
+              <div class="room-gate hidden" id="room-gate">
+                <div class="panel gate-panel">
+                  <p class="section-label">Conversation access</p>
+                  <h2>Enter an email before joining this conversation.</h2>
+                  <p class="helper-text">
+                    O_Tomeh.Chat opens conversations after you enter your email.
+                  </p>
+                </div>
+              </div>
+
+              <div class="video-grid" id="video-grid"></div>
+
+              <div class="control-dock">
+                <button class="control-button" id="toggle-mic-button" type="button">
+                  <span class="control-icon">M</span>
+                  <span id="toggle-mic-label">Mute</span>
+                </button>
+                <button class="control-button" id="toggle-camera-button" type="button">
+                  <span class="control-icon">C</span>
+                  <span id="toggle-camera-label">Camera off</span>
+                </button>
+                <button class="control-button" id="copy-room-code-button" type="button">
+                  <span class="control-icon">#</span>
+                  <span>Copy conversation code</span>
+                </button>
+                <button class="control-button control-button-danger" id="leave-room-dock-button" type="button">
+                  <span class="control-icon">X</span>
+                  <span>Leave conversation</span>
+                </button>
+              </div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast hidden" id="toast"></div>
+
+    <template id="video-tile-template">
+      <article class="video-tile">
+        <video autoplay playsinline></video>
+        <div class="video-avatar"></div>
+        <div class="video-overlay">
+          <div>
+            <strong class="video-name"></strong>
+            <p class="video-status"></p>
+          </div>
+          <span class="video-role"></span>
+        </div>
+      </article>
+    </template>
+
+    <template id="participant-template">
+      <li class="participant-item">
+        <div class="participant-avatar"></div>
+        <div class="participant-meta">
+          <strong class="participant-name"></strong>
+          <span class="participant-email"></span>
+        </div>
+        <span class="participant-flags"></span>
+      </li>
+    </template>
+
+    <template id="chat-message-template">
+      <article class="chat-message">
+        <header>
+          <strong class="chat-author"></strong>
+          <time class="chat-time"></time>
+        </header>
+        <p class="chat-body"></p>
+      </article>
+    </template>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

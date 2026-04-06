@@ -1,0 +1,10 @@
+{
+  "name": "o_tomeh-chat",
+  "version": "1.0.0",
+  "private": true,
+  "description": "O_Tomeh.Chat local runner",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js"
+  }
+}
