@@ -982,15 +982,29 @@ function upsertTile({ participant, stream, isLocal }) {
 
   avatar.textContent = participant.initials || initials(participant.name);
 
-  const hasVideoTrack = Boolean(stream?.getVideoTracks().find((track) => track.enabled));
-  avatar.classList.toggle("hidden", hasVideoTrack);
-  video.classList.toggle("hidden", !hasVideoTrack);
+  const hasEnabledVideoTrack = Boolean(stream?.getVideoTracks().find((track) => track.enabled));
+  const hasMediaTracks = Boolean(
+    stream && (stream.getVideoTracks().length > 0 || stream.getAudioTracks().length > 0),
+  );
 
-  if (stream && video.srcObject !== stream) {
+  tile.classList.toggle("is-audio-only", hasMediaTracks && !hasEnabledVideoTrack);
+  avatar.classList.toggle("hidden", hasEnabledVideoTrack);
+  video.classList.toggle("hidden", !hasMediaTracks);
+  video.muted = isLocal;
+  video.autoplay = true;
+  video.playsInline = true;
+
+  if (stream && hasMediaTracks && video.srcObject !== stream) {
     video.srcObject = stream;
+    const playPromise = video.play();
+    if (playPromise?.catch) {
+      playPromise.catch((error) => {
+        console.error(error);
+      });
+    }
   }
 
-  if (!hasVideoTrack) {
+  if (!hasMediaTracks) {
     video.srcObject = null;
   }
 }
