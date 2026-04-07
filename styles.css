@@ -919,6 +919,21 @@ button {
   box-shadow: inset 0 1px 0 rgba(240, 223, 189, 0.04);
 }
 
+.video-grid.is-jitsi {
+  display: block;
+  min-height: 620px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.video-grid.is-jitsi iframe {
+  display: block;
+  width: 100%;
+  height: 620px;
+  border: 0;
+  border-radius: 30px;
+}
+
 .video-tile {
   position: relative;
   overflow: hidden;
@@ -1207,6 +1222,12 @@ button {
 
   .video-grid {
     grid-template-columns: 1fr;
+  }
+
+  .video-grid.is-jitsi,
+  .video-grid.is-jitsi iframe {
+    min-height: 520px;
+    height: 520px;
   }
 
   .video-tile.is-presenting {
