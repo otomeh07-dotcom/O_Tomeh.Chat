@@ -20,6 +20,26 @@
     <div class="background-orb orb-a"></div>
     <div class="background-orb orb-b"></div>
     <div class="background-grid"></div>
+    <div class="shooting-sky" aria-hidden="true">
+      <span class="shooting-star"></span>
+      <span class="shooting-star"></span>
+      <span class="shooting-star"></span>
+      <span class="shooting-star"></span>
+      <span class="shooting-star"></span>
+      <span class="shooting-star"></span>
+      <span class="shooting-star"></span>
+      <span class="shooting-star"></span>
+      <span class="shooting-star"></span>
+      <span class="shooting-star"></span>
+      <span class="shooting-star"></span>
+      <span class="shooting-star"></span>
+      <span class="shooting-star"></span>
+      <span class="shooting-star"></span>
+      <span class="shooting-star"></span>
+      <span class="shooting-star"></span>
+      <span class="shooting-star"></span>
+      <span class="shooting-star"></span>
+    </div>
 
     <div class="app-shell">
       <header class="site-header">
@@ -48,17 +68,18 @@
               <div class="panel-header single-column-header">
                 <p class="section-label">Enter</p>
                 <h1 class="entry-title">O_Tomeh.Chat</h1>
-                <p class="entry-copy">Enter your email to continue.</p>
+                <p class="entry-copy">Choose a username to continue.</p>
               </div>
 
               <form id="auth-form" class="stack-form">
                 <label class="field">
-                  <span>Your email</span>
+                  <span>Your username</span>
                   <input
-                    id="auth-email"
-                    type="email"
-                    placeholder="you@example.com"
-                    autocomplete="email"
+                    id="auth-username"
+                    type="text"
+                    placeholder="Choose a username"
+                    autocomplete="username"
+                    maxlength="24"
                     required
                   />
                 </label>
@@ -66,7 +87,7 @@
                 <button class="primary-button" id="auth-submit" type="submit">Continue</button>
               </form>
 
-              <p class="helper-text" id="auth-feedback">Enter your email to continue.</p>
+              <p class="helper-text" id="auth-feedback">Choose a username to continue.</p>
             </section>
 
             <section class="panel link-panel entry-panel hidden" id="link-panel">
@@ -137,12 +158,27 @@
             </aside>
 
             <section class="room-stage">
+              <div class="stage-banner">
+                <div>
+                  <p class="section-label">Live conversation</p>
+                  <h3 class="stage-title">Talk, share screens, and stay in sync.</h3>
+                  <p class="stage-copy">
+                    The stage keeps everyone, messages, and your shared screen in one place.
+                  </p>
+                </div>
+                <div class="stage-badges">
+                  <span class="stage-badge">Cyan signal</span>
+                  <span class="stage-badge">Shared screens</span>
+                  <span class="stage-badge">Live voices</span>
+                </div>
+              </div>
+
               <div class="room-gate hidden" id="room-gate">
                 <div class="panel gate-panel">
                   <p class="section-label">Conversation access</p>
-                  <h2>Enter an email before joining this conversation.</h2>
+                  <h2>Choose a username before joining this conversation.</h2>
                   <p class="helper-text">
-                    O_Tomeh.Chat opens conversations after you enter your email.
+                    O_Tomeh.Chat opens conversations after you choose a username.
                   </p>
                 </div>
               </div>
@@ -157,6 +193,10 @@
                 <button class="control-button" id="toggle-camera-button" type="button">
                   <span class="control-icon">C</span>
                   <span id="toggle-camera-label">Camera off</span>
+                </button>
+                <button class="control-button" id="toggle-share-button" type="button">
+                  <span class="control-icon">S</span>
+                  <span id="toggle-share-label">Share screen</span>
                 </button>
                 <button class="control-button" id="copy-room-code-button" type="button">
                   <span class="control-icon">#</span>
