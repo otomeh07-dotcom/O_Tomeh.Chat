@@ -8,12 +8,15 @@ const rtcConfig = {
 const roomAlphabet = "bcdfghjklmnpqrstvwxyz";
 const localUserStorageKey = "otomeh-chat:local-user";
 const generatedConversationStorageKey = "otomeh-chat:generated-room";
+const requestedConversationStorageKey = "otomeh-chat:requested-room";
+const hostedConversationDomain = "meet.jit.si";
 
 const state = {
   supabase: null,
   user: null,
   currentRoom: null,
   channel: null,
+  jitsiApi: null,
   selfPeerId: null,
   localStream: null,
   cameraStream: null,
@@ -75,10 +78,6 @@ const isSupabaseConfigured =
   !appConfig.supabaseUrl.includes("YOUR_") &&
   !appConfig.supabaseAnonKey.includes("YOUR_");
 const hasPublicBaseUrl = Boolean(normalizeBaseUrl(appConfig.publicBaseUrl));
-const hasTurnServer = rtcConfig.iceServers.some((server) =>
-  [server.urls].flat().some((url) => typeof url === "string" && url.startsWith("turn:")),
-);
-
 function resolveIceServers() {
   if (Array.isArray(appConfig.iceServers) && appConfig.iceServers.length > 0) {
     return appConfig.iceServers;
@@ -94,14 +93,11 @@ bootstrap().catch((error) => {
 
 async function bootstrap() {
   bindEvents();
+  syncRequestedConversationFromUrl();
 
   if (isLocalOrigin() && !hasPublicBaseUrl) {
     elements.configBanner.textContent =
       "Shared links from localhost only work on your device. Set publicBaseUrl in config.js to your GitHub Pages URL.";
-    elements.configBanner.classList.remove("hidden");
-  } else if (!hasTurnServer) {
-    elements.configBanner.textContent =
-      "Add a TURN server in config.js for reliable cross-network audio and video.";
     elements.configBanner.classList.remove("hidden");
   }
 
@@ -120,6 +116,7 @@ async function bootstrap() {
 
 function bindEvents() {
   window.addEventListener("popstate", () => {
+    syncRequestedConversationFromUrl();
     renderRoute();
   });
 
@@ -191,6 +188,12 @@ function bindEvents() {
       return;
     }
 
+    if (state.jitsiApi) {
+      state.jitsiApi.executeCommand("sendChatMessage", value, "", true);
+      elements.chatInput.value = "";
+      return;
+    }
+
     if (!state.channel) {
       showToast("Conversation messages are unavailable right now.");
       return;
@@ -231,9 +234,12 @@ async function handleUsernameAuth(event) {
   persistUser(nextUser);
   applyUser(nextUser);
 
-  if (!getRoomFromUrl()) {
+  const requestedRoom = resolveRequestedConversationCode();
+  if (!requestedRoom) {
     issueFreshConversationCode();
     refreshSignedInProfile();
+  } else {
+    persistRequestedConversationCode(requestedRoom);
   }
 
   elements.authFeedback.textContent =
@@ -369,6 +375,10 @@ function getGeneratedConversationCode() {
   return normalizeRoomCode(localStorage.getItem(generatedConversationStorageKey) ?? "");
 }
 
+function getRequestedConversationCode() {
+  return normalizeRoomCode(localStorage.getItem(requestedConversationStorageKey) ?? "");
+}
+
 function issueFreshConversationCode() {
   const roomCode = generateRoomCode();
   localStorage.setItem(generatedConversationStorageKey, roomCode);
@@ -383,8 +393,38 @@ function clearGeneratedConversationCode() {
   localStorage.removeItem(generatedConversationStorageKey);
 }
 
+function persistRequestedConversationCode(roomCode) {
+  const normalized = normalizeRoomCode(roomCode);
+
+  if (!normalized) {
+    clearRequestedConversationCode();
+    return;
+  }
+
+  localStorage.setItem(requestedConversationStorageKey, normalized);
+}
+
+function clearRequestedConversationCode() {
+  localStorage.removeItem(requestedConversationStorageKey);
+}
+
+function resolveRequestedConversationCode() {
+  return getRoomFromUrl() || getRequestedConversationCode();
+}
+
+function syncRequestedConversationFromUrl() {
+  const roomCode = getRoomFromUrl();
+
+  if (roomCode) {
+    persistRequestedConversationCode(roomCode);
+    return;
+  }
+
+  clearRequestedConversationCode();
+}
+
 function updateGeneratedLinkPanel() {
-  const roomCode = ensureGeneratedConversationCode();
+  const roomCode = resolveRequestedConversationCode() || ensureGeneratedConversationCode();
   const roomLink = getRoomLink(roomCode);
   elements.myRoomCode.textContent = roomCode;
   elements.myRoomLinkPreview.textContent = roomLink;
@@ -392,7 +432,7 @@ function updateGeneratedLinkPanel() {
 }
 
 function renderRoute() {
-  const roomCode = getRoomFromUrl();
+  const roomCode = resolveRequestedConversationCode();
   const canRenderRoom = Boolean(roomCode && state.user && state.authReady);
 
   elements.landingView.classList.toggle("hidden", canRenderRoom);
@@ -401,6 +441,8 @@ function renderRoute() {
   if (!canRenderRoom) {
     if (roomCode && !state.user) {
       elements.authFeedback.textContent = `Choose a username to open conversation ${roomCode}.`;
+    } else if (state.user) {
+      refreshSignedInProfile();
     }
 
     disconnectRoom().catch((error) => console.error(error));
@@ -434,6 +476,7 @@ function getRoomFromUrl() {
 }
 
 function goToRoom(roomCode) {
+  persistRequestedConversationCode(roomCode);
   const url = new URL(window.location.href);
   url.searchParams.set("room", roomCode);
   window.history.pushState({}, "", url);
@@ -441,9 +484,11 @@ function goToRoom(roomCode) {
 }
 
 function leaveCurrentRoom() {
+  clearRequestedConversationCode();
   const url = new URL(window.location.href);
   url.searchParams.delete("room");
   window.history.pushState({}, "", url);
+  refreshSignedInProfile();
   renderRoute();
 }
 
@@ -455,14 +500,8 @@ async function connectToRoom(roomCode) {
   state.participants.set(state.selfPeerId, localParticipantRecord());
   clearChat();
   resetVideoGrid();
+  elements.videoGrid.classList.add("is-jitsi");
   renderParticipants();
-
-  await ensureLocalStream();
-  upsertTile({
-    participant: localParticipantRecord(),
-    stream: state.localStream,
-    isLocal: true,
-  });
 
   appendChatMessage({
     author: "System",
@@ -471,56 +510,239 @@ async function connectToRoom(roomCode) {
     isSelf: false,
   });
 
-  if (!state.supabase) {
+  if (!window.JitsiMeetExternalAPI) {
     appendChatMessage({
       author: "System",
-      body: "This conversation is open in local preview mode.",
+      body: "Hosted conversation controls could not load.",
       sentAt: new Date().toISOString(),
       isSelf: false,
     });
-    showToast("Live conversation is unavailable right now.");
+    showToast("The hosted conversation service did not load.");
     return;
   }
 
-  const channel = state.supabase.channel(`room:${roomCode}`, {
-    config: {
-      broadcast: { self: false },
-      presence: { key: state.selfPeerId },
+  state.jitsiApi = new window.JitsiMeetExternalAPI(hostedConversationDomain, {
+    roomName: hostedConversationRoomName(roomCode),
+    parentNode: elements.videoGrid,
+    width: "100%",
+    height: "100%",
+    userInfo: {
+      displayName: currentDisplayName(),
+    },
+    configOverwrite: {
+      prejoinPageEnabled: false,
+      startWithAudioMuted: false,
+      startWithVideoMuted: false,
+      disableDeepLinking: true,
     },
   });
 
-  channel
-    .on("presence", { event: "sync" }, () => {
-      handlePresenceSync(channel);
-    })
-    .on("broadcast", { event: "signal" }, ({ payload }) => {
-      handleSignal(payload).catch((error) => console.error(error));
-    })
-    .on("broadcast", { event: "chat" }, ({ payload }) => {
-      appendChatMessage({
-        author: payload.author,
-        body: payload.body,
-        sentAt: payload.sentAt,
-        isSelf: false,
+  bindHostedConversationEvents(state.jitsiApi, roomCode);
+  syncControlState();
+}
+
+function bindHostedConversationEvents(api, roomCode) {
+  api.addEventListener("videoConferenceJoined", async (event) => {
+    state.selfPeerId = event.id || state.selfPeerId;
+    state.participants.set(state.selfPeerId, localParticipantRecord());
+    syncControlState();
+    await syncHostedParticipants();
+  });
+
+  api.addEventListener("participantJoined", async ({ id, displayName }) => {
+    upsertHostedParticipant({
+      peerId: id,
+      name: displayName || "Guest",
+    });
+    renderParticipants();
+    await syncHostedParticipants();
+    appendChatMessage({
+      author: "System",
+      body: `${displayName || "A participant"} joined the conversation.`,
+      sentAt: new Date().toISOString(),
+      isSelf: false,
+    });
+  });
+
+  api.addEventListener("participantLeft", ({ id }) => {
+    const name = state.participants.get(id)?.name ?? "A participant";
+    if (id) {
+      state.participants.delete(id);
+    }
+    renderParticipants();
+    appendChatMessage({
+      author: "System",
+      body: `${name} left the conversation.`,
+      sentAt: new Date().toISOString(),
+      isSelf: false,
+    });
+  });
+
+  api.addEventListener("audioMuteStatusChanged", ({ muted }) => {
+    state.micEnabled = !muted;
+    state.participants.set(state.selfPeerId, localParticipantRecord());
+    renderParticipants();
+    syncControlState();
+  });
+
+  api.addEventListener("videoMuteStatusChanged", ({ muted }) => {
+    state.cameraEnabled = !muted;
+    state.participants.set(state.selfPeerId, localParticipantRecord());
+    renderParticipants();
+    syncControlState();
+  });
+
+  api.addEventListener("screenSharingStatusChanged", ({ on }) => {
+    state.screenSharing = Boolean(on);
+    state.participants.set(state.selfPeerId, localParticipantRecord());
+    renderParticipants();
+    syncControlState();
+  });
+
+  api.addEventListener("contentSharingParticipantsChanged", ({ data }) => {
+    const sharingIds = new Set(Array.isArray(data) ? data : []);
+
+    for (const [peerId, participant] of state.participants.entries()) {
+      state.participants.set(peerId, {
+        ...participant,
+        screenSharing: sharingIds.has(peerId),
       });
-    });
+    }
 
-  await new Promise((resolve, reject) => {
-    channel.subscribe(async (status) => {
-      if (status === "SUBSCRIBED") {
-        state.channel = channel;
-        await updatePresence();
-        resolve();
-      }
+    renderParticipants();
+  });
 
-      if (status === "TIMED_OUT" || status === "CHANNEL_ERROR") {
-        reject(new Error(`Channel status: ${status}`));
-      }
+  api.addEventListener("displayNameChange", ({ id, displayname }) => {
+    upsertHostedParticipant({
+      peerId: id,
+      name: displayname || "Guest",
     });
+    renderParticipants();
+  });
+
+  api.addEventListener("incomingMessage", ({ nick, message, stamp }) => {
+    appendChatMessage({
+      author: nick || "Guest",
+      body: message,
+      sentAt: stamp || new Date().toISOString(),
+      isSelf: false,
+    });
+  });
+
+  api.addEventListener("outgoingMessage", ({ message }) => {
+    appendChatMessage({
+      author: currentDisplayName(),
+      body: message,
+      sentAt: new Date().toISOString(),
+      isSelf: true,
+    });
+  });
+
+  api.addEventListener("cameraError", () => {
+    showToast("Camera access failed in the conversation.");
+  });
+
+  api.addEventListener("micError", () => {
+    showToast("Microphone access failed in the conversation.");
+  });
+
+  api.addEventListener("videoConferenceLeft", () => {
+    if (state.currentRoom === roomCode) {
+      leaveCurrentRoom();
+    }
   });
 }
 
+async function syncHostedParticipants() {
+  if (!state.jitsiApi) {
+    return;
+  }
+
+  try {
+    const roomsInfo = await state.jitsiApi.getRoomsInfo();
+    const mainRoom = roomsInfo?.rooms?.find((room) => room.isMainRoom) ?? roomsInfo?.rooms?.[0];
+    const roomParticipants = Array.isArray(mainRoom?.participants) ? mainRoom.participants : [];
+    const nextParticipants = new Map();
+
+    if (state.selfPeerId) {
+      nextParticipants.set(state.selfPeerId, localParticipantRecord());
+    }
+
+    for (const participant of roomParticipants) {
+      if (!participant?.id) {
+        continue;
+      }
+
+      if (participant.id === state.selfPeerId) {
+        nextParticipants.set(state.selfPeerId, {
+          ...localParticipantRecord(),
+          name: participant.displayName || currentDisplayName(),
+          initials: initials(participant.displayName || currentDisplayName()),
+        });
+        continue;
+      }
+
+      const previous = state.participants.get(participant.id);
+      nextParticipants.set(participant.id, {
+        peerId: participant.id,
+        userId: participant.id,
+        name: participant.displayName || previous?.name || "Guest",
+        handle: previous?.handle || "In conversation",
+        initials: initials(participant.displayName || previous?.name || "Guest"),
+        audioEnabled: previous?.audioEnabled ?? true,
+        videoEnabled: previous?.videoEnabled ?? true,
+        screenSharing: previous?.screenSharing ?? false,
+        joinedAt: previous?.joinedAt || new Date().toISOString(),
+      });
+    }
+
+    state.participants.clear();
+    for (const [peerId, participant] of nextParticipants.entries()) {
+      state.participants.set(peerId, participant);
+    }
+
+    renderParticipants();
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function upsertHostedParticipant({ peerId, name }) {
+  if (!peerId) {
+    return;
+  }
+
+  const previous = state.participants.get(peerId);
+  state.participants.set(peerId, {
+    peerId,
+    userId: peerId,
+    name: name || previous?.name || "Guest",
+    handle: previous?.handle || "In conversation",
+    initials: initials(name || previous?.name || "Guest"),
+    audioEnabled: previous?.audioEnabled ?? true,
+    videoEnabled: previous?.videoEnabled ?? true,
+    screenSharing: previous?.screenSharing ?? false,
+    joinedAt: previous?.joinedAt || new Date().toISOString(),
+  });
+}
+
+function hostedConversationRoomName(roomCode) {
+  return `otomehchat-${roomCode.replace(/-/g, "")}`;
+}
+
 async function disconnectRoom() {
+  const activeApi = state.jitsiApi;
+  state.jitsiApi = null;
+  state.currentRoom = null;
+
+  if (activeApi) {
+    try {
+      activeApi.dispose();
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
   if (state.channel) {
     try {
       await state.channel.unsubscribe();
@@ -530,7 +752,6 @@ async function disconnectRoom() {
   }
 
   state.channel = null;
-  state.currentRoom = null;
   state.selfPeerId = null;
   state.participants.clear();
 
@@ -541,6 +762,7 @@ async function disconnectRoom() {
   state.peers.clear();
   stopLocalStream();
   resetVideoGrid();
+  elements.videoGrid.classList.remove("is-jitsi");
   renderParticipants();
   clearChat();
 }
@@ -643,6 +865,11 @@ async function refreshLocalPresenceAndTile() {
 }
 
 async function toggleScreenShare() {
+  if (state.jitsiApi) {
+    state.jitsiApi.executeCommand("toggleShareScreen");
+    return;
+  }
+
   if (state.screenSharing) {
     await stopScreenShare();
     showToast("Screen sharing stopped.");
@@ -714,6 +941,10 @@ async function stopScreenShare() {
 }
 
 async function updatePresence() {
+  if (state.jitsiApi) {
+    return;
+  }
+
   if (!state.channel || !state.user) {
     return;
   }
@@ -1074,6 +1305,11 @@ function clearChat() {
 }
 
 async function toggleTrack(kind) {
+  if (state.jitsiApi) {
+    state.jitsiApi.executeCommand(kind === "audio" ? "toggleAudio" : "toggleVideo");
+    return;
+  }
+
   if (!state.localStream) {
     return;
   }
