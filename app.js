@@ -16,11 +16,15 @@ const state = {
   channel: null,
   selfPeerId: null,
   localStream: null,
+  cameraStream: null,
+  screenStream: null,
   peers: new Map(),
   participants: new Map(),
   toastTimer: null,
   micEnabled: true,
   cameraEnabled: true,
+  screenSharing: false,
+  restoreCameraEnabled: true,
   authReady: false,
 };
 
@@ -34,7 +38,7 @@ const elements = {
   authPanel: document.getElementById("auth-panel"),
   linkPanel: document.getElementById("link-panel"),
   authForm: document.getElementById("auth-form"),
-  authEmail: document.getElementById("auth-email"),
+  authUsername: document.getElementById("auth-username"),
   authFeedback: document.getElementById("auth-feedback"),
   authSubmit: document.getElementById("auth-submit"),
   myRoomCode: document.getElementById("my-room-code"),
@@ -57,6 +61,8 @@ const elements = {
   toggleMicLabel: document.getElementById("toggle-mic-label"),
   toggleCameraButton: document.getElementById("toggle-camera-button"),
   toggleCameraLabel: document.getElementById("toggle-camera-label"),
+  toggleShareButton: document.getElementById("toggle-share-button"),
+  toggleShareLabel: document.getElementById("toggle-share-label"),
   toast: document.getElementById("toast"),
   videoTileTemplate: document.getElementById("video-tile-template"),
   participantTemplate: document.getElementById("participant-template"),
@@ -117,11 +123,11 @@ function bindEvents() {
     renderRoute();
   });
 
-  elements.authForm.addEventListener("submit", handleEmailAuth);
+  elements.authForm.addEventListener("submit", handleUsernameAuth);
   elements.newRoomButton.addEventListener("click", () => {
     if (!state.user) {
-      showToast("Enter your email before opening a conversation.");
-      elements.authEmail.focus();
+      showToast("Choose a username before opening a conversation.");
+      elements.authUsername.focus();
       return;
     }
 
@@ -130,7 +136,7 @@ function bindEvents() {
 
   elements.copyHomeLinkButton.addEventListener("click", async () => {
     if (!state.user) {
-      showToast("Enter your email first.");
+      showToast("Choose a username first.");
       return;
     }
 
@@ -170,6 +176,12 @@ function bindEvents() {
   elements.leaveRoomDockButton.addEventListener("click", leaveCurrentRoom);
   elements.toggleMicButton.addEventListener("click", () => toggleTrack("audio"));
   elements.toggleCameraButton.addEventListener("click", () => toggleTrack("video"));
+  elements.toggleShareButton.addEventListener("click", () => {
+    toggleScreenShare().catch((error) => {
+      console.error(error);
+      showToast("Screen sharing could not start.");
+    });
+  });
 
   elements.chatForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -206,16 +218,16 @@ function bindEvents() {
   });
 }
 
-async function handleEmailAuth(event) {
+async function handleUsernameAuth(event) {
   event.preventDefault();
 
-  const email = normalizeEmail(elements.authEmail.value);
-  if (!isValidEmail(email)) {
-    showToast("Enter a valid email address.");
+  const username = sanitizeUsername(elements.authUsername.value);
+  if (!isValidUsername(username)) {
+    showToast("Choose a username with at least 3 characters.");
     return;
   }
 
-  const nextUser = createLocalUser(email);
+  const nextUser = createLocalUser(username);
   persistUser(nextUser);
   applyUser(nextUser);
 
@@ -227,7 +239,7 @@ async function handleEmailAuth(event) {
   elements.authFeedback.textContent =
     "Your conversation link is ready below.";
   renderRoute();
-  showToast("Conversation access ready.");
+  showToast("Username saved.");
 }
 
 function applyUser(user) {
@@ -236,7 +248,7 @@ function applyUser(user) {
 
   if (!state.user) {
     state.currentRoom = null;
-    elements.authEmail.value = "";
+    elements.authUsername.value = "";
     elements.myRoomCode.textContent = "---";
     elements.myRoomLinkPreview.textContent = "Open your conversation link";
     elements.myRoomLinkPreview.href = "./";
@@ -253,7 +265,7 @@ function updateAuthPanels() {
   elements.linkPanel.classList.toggle("hidden", !isSignedIn);
 
   if (state.user) {
-    elements.sessionEmail.textContent = state.user.email;
+    elements.sessionEmail.textContent = `@${state.user.username}`;
   } else {
     elements.sessionEmail.textContent = "";
   }
@@ -272,16 +284,7 @@ function currentDisplayName() {
     return "Guest";
   }
 
-  const stored = localStorage.getItem(displayNameStorageKey(state.user.id));
-  return stored || deriveNameFromEmail(state.user.email);
-}
-
-function displayNameStorageKey(userId) {
-  return `otomeh-chat:name:${userId}`;
-}
-
-function normalizeEmail(value = "") {
-  return value.trim().toLowerCase();
+  return state.user.username;
 }
 
 function normalizeBaseUrl(value = "") {
@@ -293,8 +296,20 @@ function normalizeBaseUrl(value = "") {
   return trimmed.endsWith("/") ? trimmed : `${trimmed}/`;
 }
 
-function isValidEmail(value) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(value);
+function sanitizeUsername(value = "") {
+  return value
+    .replace(/\s+/g, " ")
+    .replace(/[^a-zA-Z0-9 _.-]/g, "")
+    .trim()
+    .slice(0, 24);
+}
+
+function normalizeUsername(value = "") {
+  return value.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function isValidUsername(value) {
+  return normalizeUsername(value).length >= 3;
 }
 
 function isLocalOrigin() {
@@ -307,11 +322,11 @@ function warnAboutLocalShareLink() {
   }
 }
 
-function createLocalUser(email) {
-  const normalized = normalizeEmail(email);
+function createLocalUser(username) {
+  const cleaned = sanitizeUsername(username);
   return {
-    id: normalized,
-    email: normalized,
+    id: crypto.randomUUID(),
+    username: cleaned,
   };
 }
 
@@ -333,13 +348,16 @@ function restoreStoredUser() {
     }
 
     const parsed = JSON.parse(raw);
-    if (!parsed?.email || !isValidEmail(parsed.email)) {
+    if (!parsed?.username || !isValidUsername(parsed.username)) {
       clearStoredUser();
       applyUser(null);
       return;
     }
 
-    applyUser(createLocalUser(parsed.email));
+    applyUser({
+      id: parsed.id || crypto.randomUUID(),
+      username: sanitizeUsername(parsed.username),
+    });
   } catch (error) {
     console.error(error);
     clearStoredUser();
@@ -373,20 +391,6 @@ function updateGeneratedLinkPanel() {
   elements.myRoomLinkPreview.href = roomLink;
 }
 
-function deriveNameFromEmail(email = "") {
-  const [raw] = email.split("@");
-  const cleaned = raw.replace(/[._-]+/g, " ").trim();
-  if (!cleaned) {
-    return "New Member";
-  }
-
-  return cleaned
-    .split(" ")
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
 function renderRoute() {
   const roomCode = getRoomFromUrl();
   const canRenderRoom = Boolean(roomCode && state.user && state.authReady);
@@ -396,7 +400,7 @@ function renderRoute() {
 
   if (!canRenderRoom) {
     if (roomCode && !state.user) {
-      elements.authFeedback.textContent = `Enter your email to open conversation ${roomCode}.`;
+      elements.authFeedback.textContent = `Choose a username to open conversation ${roomCode}.`;
     }
 
     disconnectRoom().catch((error) => console.error(error));
@@ -542,17 +546,25 @@ async function disconnectRoom() {
 }
 
 function stopLocalStream() {
-  if (!state.localStream) {
-    return;
-  }
+  const streams = [state.localStream, state.cameraStream, state.screenStream].filter(Boolean);
+  const stoppedTracks = new Set();
 
-  for (const track of state.localStream.getTracks()) {
-    track.stop();
+  for (const stream of streams) {
+    for (const track of stream.getTracks()) {
+      if (!stoppedTracks.has(track)) {
+        track.stop();
+        stoppedTracks.add(track);
+      }
+    }
   }
 
   state.localStream = null;
+  state.cameraStream = null;
+  state.screenStream = null;
   state.micEnabled = true;
   state.cameraEnabled = true;
+  state.screenSharing = false;
+  state.restoreCameraEnabled = true;
   syncControlState();
 }
 
@@ -562,22 +574,143 @@ async function ensureLocalStream() {
   }
 
   try {
-    state.localStream = await navigator.mediaDevices.getUserMedia({
+    state.cameraStream = await navigator.mediaDevices.getUserMedia({
       audio: true,
       video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
     });
-    state.micEnabled = true;
-    state.cameraEnabled = true;
+    state.micEnabled = Boolean(state.cameraStream.getAudioTracks()[0]?.enabled ?? true);
+    state.cameraEnabled = Boolean(state.cameraStream.getVideoTracks()[0]?.enabled ?? true);
   } catch (error) {
     console.error(error);
     showToast("Camera or microphone access was denied. You can still join muted.");
-    state.localStream = new MediaStream();
+    state.cameraStream = new MediaStream();
     state.micEnabled = false;
     state.cameraEnabled = false;
   }
 
+  state.localStream = buildLocalStream();
   syncControlState();
   return state.localStream;
+}
+
+function buildLocalStream(overrideVideoTrack = null) {
+  const stream = new MediaStream();
+  const audioTrack = state.cameraStream?.getAudioTracks()[0] ?? null;
+  const videoTrack = overrideVideoTrack ?? getCameraTrack();
+
+  if (audioTrack) {
+    stream.addTrack(audioTrack);
+  }
+
+  if (videoTrack) {
+    stream.addTrack(videoTrack);
+  }
+
+  return stream;
+}
+
+function getCameraTrack() {
+  return state.cameraStream?.getVideoTracks()[0] ?? null;
+}
+
+function getCurrentVideoTrack() {
+  return state.screenSharing
+    ? state.screenStream?.getVideoTracks()[0] ?? null
+    : getCameraTrack();
+}
+
+async function replaceOutgoingTrack(kind, nextTrack) {
+  for (const peer of state.peers.values()) {
+    const sender = peer.pc
+      .getSenders()
+      .find((item) => item.track?.kind === kind);
+
+    if (sender) {
+      await sender.replaceTrack(nextTrack ?? null);
+    }
+  }
+}
+
+async function refreshLocalPresenceAndTile() {
+  state.participants.set(state.selfPeerId, localParticipantRecord());
+  upsertTile({
+    participant: localParticipantRecord(),
+    stream: state.localStream,
+    isLocal: true,
+  });
+  renderParticipants();
+  await updatePresence();
+}
+
+async function toggleScreenShare() {
+  if (state.screenSharing) {
+    await stopScreenShare();
+    showToast("Screen sharing stopped.");
+    return;
+  }
+
+  if (!navigator.mediaDevices?.getDisplayMedia) {
+    showToast("Screen sharing is not supported in this browser.");
+    return;
+  }
+
+  await ensureLocalStream();
+
+  try {
+    state.restoreCameraEnabled = state.cameraEnabled;
+    state.screenStream = await navigator.mediaDevices.getDisplayMedia({
+      video: true,
+      audio: false,
+    });
+  } catch (error) {
+    if (error?.name !== "NotAllowedError") {
+      console.error(error);
+    }
+    return;
+  }
+
+  const screenTrack = state.screenStream.getVideoTracks()[0];
+  if (!screenTrack) {
+    showToast("No screen track was captured.");
+    return;
+  }
+
+  screenTrack.addEventListener("ended", () => {
+    if (state.screenSharing) {
+      stopScreenShare().catch((error) => console.error(error));
+    }
+  });
+
+  state.screenSharing = true;
+  state.cameraEnabled = true;
+  state.localStream = buildLocalStream(screenTrack);
+  await replaceOutgoingTrack("video", screenTrack);
+  syncControlState();
+  await refreshLocalPresenceAndTile();
+  showToast("Screen sharing started.");
+}
+
+async function stopScreenShare() {
+  const cameraTrack = getCameraTrack();
+
+  if (state.screenStream) {
+    for (const track of state.screenStream.getTracks()) {
+      track.stop();
+    }
+  }
+
+  state.screenStream = null;
+  state.screenSharing = false;
+
+  if (cameraTrack) {
+    cameraTrack.enabled = state.restoreCameraEnabled;
+  }
+
+  state.cameraEnabled = Boolean(cameraTrack?.enabled);
+  state.localStream = buildLocalStream();
+  await replaceOutgoingTrack("video", cameraTrack ?? null);
+  syncControlState();
+  await refreshLocalPresenceAndTile();
 }
 
 async function updatePresence() {
@@ -592,11 +725,12 @@ function localParticipantRecord() {
   return {
     peerId: state.selfPeerId,
     userId: state.user?.id ?? "anonymous",
-    email: state.user?.email ?? "",
     name: currentDisplayName(),
+    handle: state.user?.username ? `@${state.user.username}` : "@guest",
     initials: initials(currentDisplayName()),
     audioEnabled: state.micEnabled,
     videoEnabled: state.cameraEnabled,
+    screenSharing: state.screenSharing,
     joinedAt: new Date().toISOString(),
   };
 }
@@ -825,6 +959,9 @@ function upsertTile({ participant, stream, isLocal }) {
   }
 
   tile.classList.toggle("remote", !isLocal);
+  tile.classList.toggle("is-local", isLocal);
+  tile.classList.toggle("is-presenting", Boolean(participant.screenSharing));
+  tile.classList.toggle("is-screen-share", Boolean(participant.screenSharing));
 
   const video = tile.querySelector("video");
   const avatar = tile.querySelector(".video-avatar");
@@ -833,10 +970,14 @@ function upsertTile({ participant, stream, isLocal }) {
   const role = tile.querySelector(".video-role");
 
   name.textContent = participant.name + (isLocal ? " (You)" : "");
-  role.textContent = isLocal ? "Local" : "Guest";
+  role.textContent = participant.screenSharing ? "Screen live" : isLocal ? "Local" : "Guest";
   status.textContent = [
     participant.audioEnabled ? "Mic on" : "Mic off",
-    participant.videoEnabled ? "Camera on" : "Camera off",
+    participant.screenSharing
+      ? "Screen share live"
+      : participant.videoEnabled
+        ? "Camera on"
+        : "Camera off",
   ].join(" | ");
 
   avatar.textContent = participant.initials || initials(participant.name);
@@ -889,9 +1030,9 @@ function renderParticipants() {
     avatar.textContent = participant.initials || initials(participant.name);
     name.textContent =
       participant.name + (participant.peerId === state.selfPeerId ? " (You)" : "");
-    email.textContent = participant.email || "No email available";
+    email.textContent = participant.handle || "@guest";
     flags.textContent = `${participant.audioEnabled ? "Mic" : "Muted"} / ${
-      participant.videoEnabled ? "Cam" : "No cam"
+      participant.screenSharing ? "Screen" : participant.videoEnabled ? "Cam" : "No cam"
     }`;
 
     elements.participantList.append(fragment);
@@ -923,8 +1064,17 @@ async function toggleTrack(kind) {
     return;
   }
 
+  if (kind === "video" && state.screenSharing) {
+    showToast("Stop screen sharing before changing the camera.");
+    return;
+  }
+
   const tracks =
-    kind === "audio" ? state.localStream.getAudioTracks() : state.localStream.getVideoTracks();
+    kind === "audio"
+      ? state.cameraStream?.getAudioTracks() ?? []
+      : getCameraTrack()
+        ? [getCameraTrack()]
+        : [];
   if (!tracks.length) {
     showToast(`No ${kind === "audio" ? "microphone" : "camera"} track is available.`);
     return;
@@ -940,25 +1090,22 @@ async function toggleTrack(kind) {
     state.micEnabled = nextEnabled;
   } else {
     state.cameraEnabled = nextEnabled;
+    state.localStream = buildLocalStream();
+    await replaceOutgoingTrack("video", tracks[0]);
   }
 
   syncControlState();
-  await updatePresence();
-  state.participants.set(state.selfPeerId, localParticipantRecord());
   refreshSignedInProfile();
-  upsertTile({
-    participant: localParticipantRecord(),
-    stream: state.localStream,
-    isLocal: true,
-  });
-  renderParticipants();
+  await refreshLocalPresenceAndTile();
 }
 
 function syncControlState() {
   elements.toggleMicLabel.textContent = state.micEnabled ? "Mute" : "Unmute";
   elements.toggleCameraLabel.textContent = state.cameraEnabled ? "Camera off" : "Camera on";
+  elements.toggleShareLabel.textContent = state.screenSharing ? "Stop sharing" : "Share screen";
   elements.toggleMicButton.classList.toggle("is-off", !state.micEnabled);
   elements.toggleCameraButton.classList.toggle("is-off", !state.cameraEnabled);
+  elements.toggleShareButton.classList.toggle("is-active", state.screenSharing);
 }
 
 function initials(value = "") {
