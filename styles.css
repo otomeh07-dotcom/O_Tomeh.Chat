@@ -974,6 +974,11 @@ button {
   background: rgba(1, 9, 24, 0.96);
 }
 
+.video-tile.is-audio-only video {
+  opacity: 0.02;
+  transform: none;
+}
+
 .video-avatar {
   position: absolute;
   inset: 50% auto auto 50%;
@@ -1218,4 +1223,3 @@ button {
     flex: 1 1 calc(50% - 12px);
   }
 }
-
