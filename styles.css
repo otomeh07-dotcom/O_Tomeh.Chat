@@ -1170,8 +1170,14 @@ button {
 }
 
 @media (max-width: 1080px) {
-  .landing-grid {
+  .landing-grid,
+  .room-shell {
     grid-template-columns: 1fr;
+  }
+
+  .room-sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--room-line);
   }
 
   .stage-banner {
@@ -1183,33 +1189,20 @@ button {
   }
 }
 
-@media (max-width: 920px) and (orientation: portrait) {
-  .room-shell {
-    grid-template-columns: 1fr;
-  }
-
-  .room-sidebar {
-    border-right: none;
-    border-bottom: 1px solid var(--room-line);
-  }
-}
-
-@media (max-width: 720px) and (orientation: portrait) and (max-aspect-ratio: 10/16) {
+@media (max-width: 720px) {
   .app-shell {
-    width: 100%;
-    padding: 10px 10px 12px;
+    width: min(100% - 20px, 1440px);
+    padding-top: 12px;
   }
 
   .site-header {
-    flex-direction: row;
-    align-items: center;
-    gap: 10px;
-    padding-bottom: 12px;
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .header-actions,
   .session-pill {
-    width: auto;
+    width: 100%;
   }
 
   .hero-meta,
@@ -1222,74 +1215,23 @@ button {
   }
 
   .room-stage,
+  .room-sidebar,
   .auth-panel,
   .meeting-panel,
   .info-panel,
   .entry-panel,
   .link-panel {
-    padding: 16px;
-  }
-
-  .room-view {
-    height: calc(100dvh - 78px);
-    min-height: calc(100dvh - 78px);
-  }
-
-  .room-shell {
-    display: block;
-    height: 100%;
-    min-height: 100%;
-    border-radius: 24px;
-  }
-
-  .room-sidebar {
-    display: none;
-  }
-
-  .room-stage {
-    height: 100%;
-    min-height: 100%;
-    gap: 12px;
-    padding: 12px;
-  }
-
-  .room-stage::before {
-    display: none;
-  }
-
-  .stage-banner {
-    grid-template-columns: 1fr;
-    gap: 8px;
-    padding: 12px 14px;
-    border-radius: 20px;
-  }
-
-  .stage-title {
-    margin: 6px 0 0;
-    font-size: 1.1rem;
-  }
-
-  .stage-copy,
-  .stage-badges,
-  .stage-banner .section-label {
-    display: none;
+    padding: 18px;
   }
 
   .video-grid {
     grid-template-columns: 1fr;
-    grid-auto-rows: minmax(0, 1fr);
-    flex: 1 1 auto;
-    min-height: 0;
-    gap: 10px;
-    padding: 6px;
-    border-radius: 22px;
   }
 
   .video-grid.is-jitsi,
   .video-grid.is-jitsi iframe {
-    min-height: 100%;
-    height: 100%;
-    border-radius: 22px;
+    min-height: 520px;
+    height: 520px;
   }
 
   .video-tile.is-presenting {
@@ -1297,44 +1239,12 @@ button {
     grid-row: span 1;
   }
 
-  .video-tile {
-    min-height: 0;
-  }
-
   .control-dock {
-    position: sticky;
-    bottom: 0;
     width: 100%;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 10px;
-    border-radius: 22px;
-    margin-top: auto;
+    border-radius: 24px;
   }
 
   .control-button {
-    flex: 1 1 18%;
-    min-width: 0;
-    min-height: 52px;
-    padding: 0;
-    border-radius: 18px;
-  }
-
-  .control-button span:last-child {
-    display: none;
-  }
-
-  .control-icon {
-    width: 34px;
-    height: 34px;
-    font-size: 1rem;
-  }
-
-  .room-gate {
-    inset: 12px;
-  }
-
-  .gate-panel {
-    padding: 22px 18px;
+    flex: 1 1 calc(50% - 12px);
   }
 }
