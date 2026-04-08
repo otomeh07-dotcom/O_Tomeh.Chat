@@ -10,7 +10,6 @@ const localUserStorageKey = "otomeh-chat:local-user";
 const generatedConversationStorageKey = "otomeh-chat:generated-room";
 const requestedConversationStorageKey = "otomeh-chat:requested-room";
 const hostedConversationDomain = "meet.jit.si";
-const hostedConversationMode = "embed";
 
 const state = {
   supabase: null,
@@ -494,11 +493,6 @@ function leaveCurrentRoom() {
 }
 
 async function connectToRoom(roomCode) {
-  if (hostedConversationMode === "redirect") {
-    window.location.assign(getHostedConversationLaunchUrl(roomCode));
-    return;
-  }
-
   await disconnectRoom();
 
   state.currentRoom = roomCode;
@@ -805,18 +799,6 @@ function upsertHostedParticipant({ peerId, name }) {
 
 function hostedConversationRoomName(roomCode) {
   return `otomehchat-${roomCode.replace(/-/g, "")}`;
-}
-
-function getHostedConversationLaunchUrl(roomCode) {
-  const url = new URL(`https://${hostedConversationDomain}/${hostedConversationRoomName(roomCode)}`);
-  url.hash = [
-    "config.prejoinPageEnabled=false",
-    "config.prejoinConfig.enabled=false",
-    "config.disableDeepLinking=true",
-    "config.startWithAudioMuted=false",
-    "config.startWithVideoMuted=false",
-  ].join("&");
-  return url.toString();
 }
 
 async function disconnectRoom() {
