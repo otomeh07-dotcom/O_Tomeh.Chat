@@ -10,7 +10,7 @@ const localUserStorageKey = "otomeh-chat:local-user";
 const generatedConversationStorageKey = "otomeh-chat:generated-room";
 const requestedConversationStorageKey = "otomeh-chat:requested-room";
 const hostedConversationDomain = "meet.jit.si";
-const hostedConversationMode = "redirect";
+const hostedConversationMode = "embed";
 
 const state = {
   supabase: null,
