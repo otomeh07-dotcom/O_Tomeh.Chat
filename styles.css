@@ -1170,14 +1170,8 @@ button {
 }
 
 @media (max-width: 1080px) {
-  .landing-grid,
-  .room-shell {
+  .landing-grid {
     grid-template-columns: 1fr;
-  }
-
-  .room-sidebar {
-    border-right: none;
-    border-bottom: 1px solid var(--room-line);
   }
 
   .stage-banner {
@@ -1189,7 +1183,18 @@ button {
   }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 920px) and (orientation: portrait) {
+  .room-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .room-sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--room-line);
+  }
+}
+
+@media (max-width: 720px) and (orientation: portrait) and (max-aspect-ratio: 10/16) {
   .app-shell {
     width: 100%;
     padding: 10px 10px 12px;
