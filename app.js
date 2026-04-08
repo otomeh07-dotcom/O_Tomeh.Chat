@@ -10,6 +10,7 @@ const localUserStorageKey = "otomeh-chat:local-user";
 const generatedConversationStorageKey = "otomeh-chat:generated-room";
 const requestedConversationStorageKey = "otomeh-chat:requested-room";
 const hostedConversationDomain = "meet.jit.si";
+const hostedConversationMode = "redirect";
 
 const state = {
   supabase: null,
@@ -493,6 +494,11 @@ function leaveCurrentRoom() {
 }
 
 async function connectToRoom(roomCode) {
+  if (hostedConversationMode === "redirect") {
+    window.location.assign(getHostedConversationLaunchUrl(roomCode));
+    return;
+  }
+
   await disconnectRoom();
 
   state.currentRoom = roomCode;
@@ -531,20 +537,45 @@ async function connectToRoom(roomCode) {
     },
     configOverwrite: {
       prejoinPageEnabled: false,
+      prejoinConfig: {
+        enabled: false,
+      },
       startWithAudioMuted: false,
       startWithVideoMuted: false,
       disableDeepLinking: true,
+      enableWelcomePage: false,
+      lobby: {
+        autoKnock: true,
+        enableChat: false,
+      },
     },
   });
 
+  configureHostedConversationFrame(state.jitsiApi);
   bindHostedConversationEvents(state.jitsiApi, roomCode);
   syncControlState();
+}
+
+function configureHostedConversationFrame(api) {
+  const iframe = api.getIFrame?.();
+  if (!iframe) {
+    return;
+  }
+
+  iframe.allow =
+    "camera; microphone; display-capture; fullscreen; autoplay; clipboard-read; clipboard-write";
+  iframe.setAttribute(
+    "allow",
+    "camera; microphone; display-capture; fullscreen; autoplay; clipboard-read; clipboard-write",
+  );
+  iframe.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
 }
 
 function bindHostedConversationEvents(api, roomCode) {
   api.addEventListener("videoConferenceJoined", async (event) => {
     state.selfPeerId = event.id || state.selfPeerId;
     state.participants.set(state.selfPeerId, localParticipantRecord());
+    await syncHostedMediaCapabilities();
     syncControlState();
     await syncHostedParticipants();
   });
@@ -585,11 +616,30 @@ function bindHostedConversationEvents(api, roomCode) {
     syncControlState();
   });
 
+  api.addEventListener("audioAvailabilityChanged", ({ available }) => {
+    if (!available) {
+      state.micEnabled = false;
+      state.participants.set(state.selfPeerId, localParticipantRecord());
+      renderParticipants();
+      syncControlState();
+      showToast("Microphone is blocked or unavailable. Allow mic access in your browser.");
+    }
+  });
+
   api.addEventListener("videoMuteStatusChanged", ({ muted }) => {
     state.cameraEnabled = !muted;
     state.participants.set(state.selfPeerId, localParticipantRecord());
     renderParticipants();
     syncControlState();
+  });
+
+  api.addEventListener("videoAvailabilityChanged", ({ available }) => {
+    if (!available) {
+      state.cameraEnabled = false;
+      state.participants.set(state.selfPeerId, localParticipantRecord());
+      renderParticipants();
+      syncControlState();
+    }
   });
 
   api.addEventListener("screenSharingStatusChanged", ({ on }) => {
@@ -707,6 +757,33 @@ async function syncHostedParticipants() {
   }
 }
 
+async function syncHostedMediaCapabilities() {
+  if (!state.jitsiApi) {
+    return;
+  }
+
+  try {
+    const [audioAvailable, audioMuted, videoAvailable, videoMuted] = await Promise.all([
+      state.jitsiApi.isAudioAvailable(),
+      state.jitsiApi.isAudioMuted(),
+      state.jitsiApi.isVideoAvailable(),
+      state.jitsiApi.isVideoMuted(),
+    ]);
+
+    state.micEnabled = Boolean(audioAvailable) && !audioMuted;
+    state.cameraEnabled = Boolean(videoAvailable) && !videoMuted;
+    state.participants.set(state.selfPeerId, localParticipantRecord());
+    renderParticipants();
+    syncControlState();
+
+    if (!audioAvailable) {
+      showToast("Microphone is blocked or unavailable. Allow mic access in your browser.");
+    }
+  } catch (error) {
+    console.error(error);
+  }
+}
+
 function upsertHostedParticipant({ peerId, name }) {
   if (!peerId) {
     return;
@@ -728,6 +805,18 @@ function upsertHostedParticipant({ peerId, name }) {
 
 function hostedConversationRoomName(roomCode) {
   return `otomehchat-${roomCode.replace(/-/g, "")}`;
+}
+
+function getHostedConversationLaunchUrl(roomCode) {
+  const url = new URL(`https://${hostedConversationDomain}/${hostedConversationRoomName(roomCode)}`);
+  url.hash = [
+    "config.prejoinPageEnabled=false",
+    "config.prejoinConfig.enabled=false",
+    "config.disableDeepLinking=true",
+    "config.startWithAudioMuted=false",
+    "config.startWithVideoMuted=false",
+  ].join("&");
+  return url.toString();
 }
 
 async function disconnectRoom() {
